@@ -1,12 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: auth
+  name: auth-service
+  namespace: videoapp
 spec:
   selector:
-    app: auth
-  type: ClusterIP
+    app: auth-service
   ports:
-    - port: 5000
+    - protocol: TCP
+      port: 80
       targetPort: 5000
-      protocol: TCP
+  type: NodePort

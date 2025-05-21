@@ -1,41 +1,19 @@
-import jwt, datetime, os
+import jwt, datetime, os, sys
 import psycopg2
-from flask import Flask, request
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 server = Flask(__name__)
+CORS(server)
 
 def get_db_connection():
-    conn = psycopg2.connect(host=os.getenv('DATABASE_HOST'),
-                            database=os.getenv('DATABASE_NAME'),
-                            user=os.getenv('DATABASE_USER'),
-                            password=os.getenv('DATABASE_PASSWORD'),
-                            port=5432)
-    return conn
-
-
-@server.route('/login', methods=['POST'])
-def login():
-    auth_table_name = os.getenv('AUTH_TABLE')
-    auth = request.authorization
-    if not auth or not auth.username or not auth.password:
-        return 'Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'}
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    query = f"SELECT email, password FROM {auth_table_name} WHERE email = %s"
-    res = cur.execute(query, (auth.username,))
-    
-    if res is None:
-        user_row = cur.fetchone()
-        email = user_row[0]
-        password = user_row[1]
-
-        if auth.username != email or auth.password != password:
-            return 'Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'}
-        else:
-            return CreateJWT(auth.username, os.environ['JWT_SECRET'], True)
-    else:
-        return 'Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'}
+    return psycopg2.connect(
+        host=os.getenv('DATABASE_HOST'),
+        database=os.getenv('DATABASE_NAME'),
+        user=os.getenv('DATABASE_USER'),
+        password=os.getenv('DATABASE_PASSWORD'),
+        port=int(os.getenv('DATABASE_PORT', 5432))
+    )
 
 def CreateJWT(username, secret, authz):
     return jwt.encode(
@@ -46,23 +24,88 @@ def CreateJWT(username, secret, authz):
             "admin": authz,
         },
         secret,
-        algorithm="HS256",
+        algorithm="HS256"
     )
 
-@server.route('/validate', methods=['POST'])
-def validate():
-    encoded_jwt = request.headers['Authorization']
-    
-    if not encoded_jwt:
-        return 'Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'}
-
-    encoded_jwt = encoded_jwt.split(' ')[1]
+@server.route('/login', methods=['POST'])
+def login():
     try:
-        decoded_jwt = jwt.decode(encoded_jwt, os.environ['JWT_SECRET'], algorithms=["HS256"])
-    except:
-        return 'Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'}
-    
-    return decoded_jwt, 200
+        auth = request.authorization
+        if not auth or not auth.username or not auth.password:
+            return jsonify({"error": "Missing auth headers"}), 401
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(f"SELECT email, password FROM {os.getenv('AUTH_TABLE')} WHERE email = %s", (auth.username,))
+        row = cur.fetchone()
+
+        if not row or row[1] != auth.password:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        token = CreateJWT(auth.username, os.environ['JWT_SECRET'], True)
+        return token if isinstance(token, str) else token.decode('utf-8')
+    except Exception as e:
+        sys.stderr.write(f"🔥 Exception in /login: {e}\n")
+        return jsonify({"error": "Internal server error"}), 500
+
+@server.route('/validate', methods=['GET', 'POST'])
+def validate():
+    token = request.headers.get('Authorization')
+    if not token or not token.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid token"}), 401
+
+    token = token.split()[1]
+    try:
+        decoded = jwt.decode(token, os.environ['JWT_SECRET'], algorithms=["HS256"])
+        return jsonify(decoded), 200
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+@server.route('/protected', methods=['GET'])
+def protected():
+    token = request.headers.get('Authorization')
+    if not token or not token.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid token"}), 401
+
+    token = token.split()[1]
+    try:
+        decoded = jwt.decode(token, os.environ['JWT_SECRET'], algorithms=["HS256"])
+        return jsonify({
+            "message": "✅ Protected route accessed!",
+            "user": decoded.get("username"),
+            "admin": decoded.get("admin", False)
+        }), 200
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+@server.route('/notify', methods=['POST'])
+def notify():
+    token = request.headers.get('Authorization')
+    if not token or not token.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid token"}), 401
+
+    token = token.split()[1]
+    try:
+        jwt.decode(token, os.environ['JWT_SECRET'], algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    data = request.get_json()
+    email = data.get("email")
+    message = data.get("message")
+
+    if not email or not message:
+        return jsonify({"error": "Missing email or message"}), 400
+
+    print(f"📢 Notifying {email}: {message}")
+    return jsonify({"status": "Notification sent!", "email": email}), 200
 
 if __name__ == '__main__':
-    server.run(host='0.0.0.0', port=5000)
+    sys.stderr.write("🚨 Auth service is starting with DEBUG LOGGING ENABLED\n")
+    server.run(host='0.0.0.0', port=5000, debug=True)

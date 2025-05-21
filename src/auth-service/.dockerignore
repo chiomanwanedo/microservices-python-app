@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.tar
+*.log
+*.env
+*.git
+*.md
+tests/
+.vscode/
+.idea/
+Dockerfile

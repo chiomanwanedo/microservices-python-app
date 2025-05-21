@@ -1,28 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: notification
-  labels:
-    app: notification
+  name: notification-service
+  namespace: videoapp
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: notification
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 8
+      app: notification-service
   template:
     metadata:
       labels:
-        app: notification
+        app: notification-service
     spec:
       containers:
-        - name: notification
-          image: nasi101/notification
+        - name: notification-service
+          image: local/notification-service:latest
+          imagePullPolicy: Never
           envFrom:
-            - configMapRef:
-                name: notification-configmap
             - secretRef:
-                name: notification-secret
+                name: videoapp-secrets

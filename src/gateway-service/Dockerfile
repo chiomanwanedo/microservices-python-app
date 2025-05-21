@@ -1,13 +1,27 @@
 FROM python:3.10-slim-bullseye
 
-RUN apt-get update && apt-get install -y --no-install-recommends --no-install-suggests build-essential libpq-dev python3-dev && pip install --no-cache-dir --upgrade pip
+# Install only what you need, and clean up after
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev python3-dev \
+ && pip install --no-cache-dir --upgrade pip \
+ && apt-get purge -y gcc python3-dev \
+ && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/*
 
+# Set working directory
 WORKDIR /app
-COPY ./requirements.txt /app
 
-RUN pip install --no-cache-dir --requirement /app/requirements.txt
-COPY . /app
+# Copy only requirements first (for better caching)
+COPY requirements.txt .
 
-EXPOSE 8080
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Now copy the rest of the app
+COPY . .
+
+# Clean pycache just in case
+RUN rm -rf __pycache__ *.pyc
+
+EXPOSE 5000
 CMD ["python", "server.py"]

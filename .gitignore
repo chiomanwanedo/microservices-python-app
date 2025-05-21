@@ -1,0 +1,6 @@
+*.tar
+wheelhouse/
+*.log
+*.pyc
+__pycache__/
+.venv/
