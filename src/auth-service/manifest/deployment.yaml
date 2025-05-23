@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: local/auth-service:latest
-          imagePullPolicy: Never
+          image: chiomavee/auth-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           envFrom:
