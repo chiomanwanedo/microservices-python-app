@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: gateway-service
-          image: docker.io/library/gateway-service:latest   # ✅ Exact match!
-          imagePullPolicy: Never
+          image: chiomavee/gateway-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           envFrom:

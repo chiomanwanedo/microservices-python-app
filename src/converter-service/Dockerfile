@@ -13,8 +13,8 @@ COPY wheelhouse/ /wheelhouse/
 # Install dependencies using offline wheels
 RUN pip install --no-index --find-links=/wheelhouse -r requirements.txt
 
-# Expose service port (change if needed)
+# Expose service port (if it matters — optional for background workers)
 EXPOSE 5000
 
-# Start the app
-CMD ["python", "server.py"]
+# ✅ Start the correct file
+CMD ["python", "consumer.py"]

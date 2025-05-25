@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: local/notification-service:latest
-          imagePullPolicy: Never
+          image: chiomavee/notification-service:latest  # ✅ Use Docker Hub image
+          imagePullPolicy: Always                       # ✅ Always pull latest from Docker Hub
           envFrom:
             - secretRef:
                 name: videoapp-secrets

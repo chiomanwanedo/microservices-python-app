@@ -1,0 +1,6 @@
+container:
+  image: postgres:14
+  env:
+    user: authuser
+    password: authpass
+    db: authdb

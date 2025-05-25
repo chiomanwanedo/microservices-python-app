@@ -1,6 +1,6 @@
 import jwt, datetime, os, sys
 import psycopg2
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
 server = Flask(__name__)
@@ -26,6 +26,10 @@ def CreateJWT(username, secret, authz):
         secret,
         algorithm="HS256"
     )
+
+@server.route("/")
+def index():
+    return render_template("index.html")
 
 @server.route('/login', methods=['POST'])
 def login():

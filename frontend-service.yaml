@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: videoapp
+spec:
+  selector:
+    app: frontend-service
+  type: LoadBalancer
+  externalIPs:
+    - 192.168.181.100
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80

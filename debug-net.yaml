@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: net-debug
+  namespace: videoapp
+spec:
+  containers:
+    - name: net-debug
+      image: nicolaka/netshoot:latest
+      command: ["sleep", "3600"]
+      tty: true

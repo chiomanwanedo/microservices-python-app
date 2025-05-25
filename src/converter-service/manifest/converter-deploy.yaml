@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: converter-service
-          image: local/converter-service:latest
-          imagePullPolicy: Never
+          image: chiomavee/converter-service:latest
+          imagePullPolicy: Always
           envFrom:
             - secretRef:
                 name: videoapp-secrets
