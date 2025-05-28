@@ -17,6 +17,8 @@ spec:
         - name: converter-service
           image: chiomavee/converter-service:latest
           imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
           envFrom:
-            - secretRef:
-                name: videoapp-secrets
+            - configMapRef:
+                name: converter-configmap

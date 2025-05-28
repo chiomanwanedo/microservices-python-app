@@ -1,0 +1,6 @@
+auth:
+  username: guest
+  password: guestpassword
+  erlangCookie: supersecretcookie
+
+fullnameOverride: rabbitmq

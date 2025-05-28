@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Auth + Token Tester</title>
   <style>
     body {
@@ -39,7 +39,7 @@
 
   <!-- TOKEN TESTER SECTION -->
   <h2>2. Test Token on an API</h2>
-  <input id="endpoint" type="text" placeholder="http://<host>:31612/protected" />
+  <input id="endpoint" type="text" placeholder="http://localhost:5000/protected" />
   <button onclick="testToken('GET')">Send GET Request</button>
   <button onclick="testToken('POST')">Send POST Request</button>
   <textarea id="jsonBody" placeholder='Optional JSON body for POST (e.g., {"key": "value"})'></textarea>
@@ -56,7 +56,7 @@
   <pre id="uploadResult"></pre>
 
   <script>
-    const baseURL = `http://auth-service`;
+    const baseURL = `http://192.168.181.246:8080`; // <-- Change this to your backend URL if needed
 
     async function login() {
       const email = document.getElementById("email").value;
@@ -64,22 +64,20 @@
       const tokenField = document.getElementById("token");
       const loginResult = document.getElementById("loginResult");
 
-      const headers = new Headers();
-      headers.set("Authorization", "Basic " + btoa(email + ":" + password));
-
       try {
         const res = await fetch(`${baseURL}/login`, {
           method: "POST",
-          headers: headers
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
         });
 
-        const text = await res.text();
+        const json = await res.json();
         if (res.ok) {
-          tokenField.value = text;
-          loginResult.innerText = "✅ Login successful. Token copied.";
+          tokenField.value = json.token;
+          loginResult.innerText = "✅ Login successful. Token filled.";
         } else {
           tokenField.value = "";
-          loginResult.innerText = `❌ Login failed: ${text}`;
+          loginResult.innerText = `❌ Login failed: ${json.error || JSON.stringify(json)}`;
         }
       } catch (err) {
         loginResult.innerText = "❌ Network error: " + err.message;

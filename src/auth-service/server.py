@@ -4,7 +4,9 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
 server = Flask(__name__)
-CORS(server)
+
+# ✅ Enable CORS globally with Authorization support
+CORS(server, resources={r"/*": {"origins": "*"}}, expose_headers=["Authorization"])
 
 def get_db_connection():
     return psycopg2.connect(
@@ -31,23 +33,27 @@ def CreateJWT(username, secret, authz):
 def index():
     return render_template("index.html")
 
+# ✅ UPDATED login route to accept JSON
 @server.route('/login', methods=['POST'])
 def login():
     try:
-        auth = request.authorization
-        if not auth or not auth.username or not auth.password:
-            return jsonify({"error": "Missing auth headers"}), 401
+        data = request.get_json()
+        if not data or not data.get("email") or not data.get("password"):
+            return jsonify({"error": "Missing email or password"}), 400
+
+        email = data["email"]
+        password = data["password"]
 
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(f"SELECT email, password FROM {os.getenv('AUTH_TABLE')} WHERE email = %s", (auth.username,))
+        cur.execute(f"SELECT email, password FROM {os.getenv('AUTH_TABLE')} WHERE email = %s", (email,))
         row = cur.fetchone()
 
-        if not row or row[1] != auth.password:
+        if not row or row[1] != password:
             return jsonify({"error": "Invalid credentials"}), 401
 
-        token = CreateJWT(auth.username, os.environ['JWT_SECRET'], True)
-        return token if isinstance(token, str) else token.decode('utf-8')
+        token = CreateJWT(email, os.environ['JWT_SECRET'], True)
+        return jsonify({"token": token if isinstance(token, str) else token.decode('utf-8')})
     except Exception as e:
         sys.stderr.write(f"🔥 Exception in /login: {e}\n")
         return jsonify({"error": "Internal server error"}), 500
