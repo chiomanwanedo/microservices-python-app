@@ -20,6 +20,9 @@
     h2 {
       margin-top: 40px;
     }
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -30,16 +33,17 @@
   <input type="email" id="email" placeholder="Email" />
   <input type="password" id="password" placeholder="Password" />
   <button onclick="login()">Login</button>
+  <button onclick="logout()">Logout</button>
 
   <label for="token">JWT Token (auto-filled on login):</label>
   <textarea id="token" readonly></textarea>
   <button onclick="copyToken()">Copy Token to Clipboard</button>
-
+  <div id="tokenInfo"></div>
   <div id="loginResult"></div>
 
   <!-- TOKEN TESTER SECTION -->
   <h2>2. Test Token on an API</h2>
-  <input id="endpoint" type="text" placeholder="http://localhost:5000/protected" />
+  <input id="endpoint" type="text" placeholder="http://192.168.181.246:8081/protected" />
   <button onclick="testToken('GET')">Send GET Request</button>
   <button onclick="testToken('POST')">Send POST Request</button>
   <textarea id="jsonBody" placeholder='Optional JSON body for POST (e.g., {"key": "value"})'></textarea>
@@ -48,24 +52,51 @@
   <pre id="response"></pre>
 
   <!-- VIDEO UPLOAD SECTION -->
-  <h2>3. Upload Video to /convert</h2>
+  <h2>3. Upload Video to /upload</h2>
   <input type="file" id="videoFile" accept="video/*" />
   <button onclick="uploadVideo()">Upload Video</button>
 
   <h3>Upload Response:</h3>
   <pre id="uploadResult"></pre>
+  <div id="uploadedFileId"></div>
+  <div id="conversionStatus"></div>
+
+  <!-- MP3 DOWNLOAD SECTION -->
+  <h2>4. Download Converted MP3</h2>
+  <input type="text" id="fid" placeholder="Enter file ID from MongoDB" />
+  <button id="downloadBtn" class="hidden" onclick="downloadMP3()">Download</button>
+
+  <!-- NOTIFY SECTION -->
+  <h2>5. Send Notification</h2>
+  <input type="email" id="notifyEmail" placeholder="Recipient Email" />
+  <input type="text" id="notifyMessage" placeholder="Message to send" />
+  <button onclick="sendNotification()">Send Notification</button>
+
+  <h3>Notification Response:</h3>
+  <pre id="notifyResult"></pre>
 
   <script>
-    const baseURL = `http://192.168.181.246:8080`; // <-- Change this to your backend URL if needed
+    const authURL = "http://192.168.181.246:8081";
+    const gatewayURL = "http://192.168.181.246:8085";
+
+    function parseJwt(token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload;
+      } catch {
+        return null;
+      }
+    }
 
     async function login() {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
       const tokenField = document.getElementById("token");
+      const tokenInfo = document.getElementById("tokenInfo");
       const loginResult = document.getElementById("loginResult");
 
       try {
-        const res = await fetch(`${baseURL}/login`, {
+        const res = await fetch(`${authURL}/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password })
@@ -75,13 +106,25 @@
         if (res.ok) {
           tokenField.value = json.token;
           loginResult.innerText = "✅ Login successful. Token filled.";
+
+          const decoded = parseJwt(json.token);
+          if (decoded?.exp) {
+            const expDate = new Date(decoded.exp * 1000);
+            tokenInfo.innerText = "🕒 Token expires: " + expDate.toLocaleString();
+          }
         } else {
           tokenField.value = "";
+          tokenInfo.innerText = "";
           loginResult.innerText = `❌ Login failed: ${json.error || JSON.stringify(json)}`;
         }
       } catch (err) {
         loginResult.innerText = "❌ Network error: " + err.message;
       }
+    }
+
+    function logout() {
+      document.getElementById("token").value = "";
+      document.getElementById("tokenInfo").innerText = "🔓 Logged out. Token cleared.";
     }
 
     function copyToken() {
@@ -93,7 +136,7 @@
 
     async function testToken(method) {
       const token = document.getElementById("token").value;
-      const url = document.getElementById("endpoint").value || `${baseURL}/protected`;
+      const url = document.getElementById("endpoint").value || `${authURL}/protected`;
       const output = document.getElementById("response");
       const body = document.getElementById("jsonBody").value;
 
@@ -112,13 +155,9 @@
           body: method === 'POST' && body ? body : undefined
         });
 
-        let text;
-        if (res.headers.get("Content-Type")?.includes("application/json")) {
-          const json = await res.json();
-          text = JSON.stringify(json, null, 2);
-        } else {
-          text = await res.text();
-        }
+        const text = res.headers.get("Content-Type")?.includes("application/json")
+          ? JSON.stringify(await res.json(), null, 2)
+          : await res.text();
 
         output.innerText = res.ok ? text : `❌ Error (${res.status}):\n` + text;
       } catch (err) {
@@ -130,6 +169,9 @@
       const token = document.getElementById("token").value;
       const fileInput = document.getElementById("videoFile");
       const output = document.getElementById("uploadResult");
+      const uploadedFileId = document.getElementById("uploadedFileId");
+      const conversionStatus = document.getElementById("conversionStatus");
+      const downloadBtn = document.getElementById("downloadBtn");
 
       if (!token || !fileInput.files.length) {
         output.innerText = "⚠️ Please login and choose a video file first.";
@@ -137,10 +179,10 @@
       }
 
       const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
+      formData.append("file", fileInput.files[0]);  // ✅ Corrected field name
 
       try {
-        const res = await fetch(`${baseURL}/convert`, {
+        const res = await fetch(`${gatewayURL}/upload`, {
           method: "POST",
           headers: {
             Authorization: "Bearer " + token
@@ -148,17 +190,100 @@
           body: formData
         });
 
-        let text;
-        if (res.headers.get("Content-Type")?.includes("application/json")) {
-          const json = await res.json();
-          text = JSON.stringify(json, null, 2);
-        } else {
-          text = await res.text();
+        const text = await res.text();
+        output.innerText = res.ok ? text : `❌ Error (${res.status}):\n` + text;
+
+        const fileIdMatch = text.match(/([a-f0-9]{24})/);
+        if (fileIdMatch) {
+          const fid = fileIdMatch[1];
+          uploadedFileId.innerHTML = `📁 File ID: <code>${fid}</code>`;
+          document.getElementById("fid").value = fid;
+          conversionStatus.innerText = "⏳ Waiting for conversion...";
+          downloadBtn.classList.add("hidden");
+          checkConversion(fid, token);
         }
+      } catch (err) {
+        output.innerText = "❌ Upload failed: " + err.message;
+      }
+    }
+
+    async function checkConversion(fid, token) {
+      const conversionStatus = document.getElementById("conversionStatus");
+      const downloadBtn = document.getElementById("downloadBtn");
+
+      try {
+        const res = await fetch(`${gatewayURL}/download?fid=${fid}`, {
+          method: "HEAD",
+          headers: { Authorization: "Bearer " + token }
+        });
+
+        if (res.ok) {
+          conversionStatus.innerText = "✅ Conversion complete. You can now download the MP3.";
+          downloadBtn.classList.remove("hidden");
+        } else {
+          setTimeout(() => checkConversion(fid, token), 3000);
+        }
+      } catch {
+        setTimeout(() => checkConversion(fid, token), 3000);
+      }
+    }
+
+    async function downloadMP3() {
+      const fid = document.getElementById("fid").value;
+      const token = document.getElementById("token").value;
+
+      if (!fid || !token) {
+        alert("⚠️ Please provide a file ID and login.");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${gatewayURL}/download?fid=${fid}`, {
+          headers: { Authorization: "Bearer " + token }
+        });
+
+        if (!res.ok) throw new Error("Download failed");
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${fid}.mp3`;
+        a.click();
+        a.remove();
+      } catch (err) {
+        alert("❌ " + err.message);
+      }
+    }
+
+    async function sendNotification() {
+      const token = document.getElementById("token").value;
+      const email = document.getElementById("notifyEmail").value;
+      const message = document.getElementById("notifyMessage").value;
+      const output = document.getElementById("notifyResult");
+
+      if (!token || !email || !message) {
+        output.innerText = "⚠️ Token, email, and message are required.";
+        return;
+      }
+
+      try {
+        const res = await fetch(`${gatewayURL}/notify`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email, message })
+        });
+
+        const text = res.headers.get("Content-Type")?.includes("application/json")
+          ? JSON.stringify(await res.json(), null, 2)
+          : await res.text();
 
         output.innerText = res.ok ? text : `❌ Error (${res.status}):\n` + text;
       } catch (err) {
-        output.innerText = "❌ Upload failed: " + err.message;
+        output.innerText = "❌ Notification failed: " + err.message;
       }
     }
   </script>

@@ -1,6 +1,7 @@
 import os, gridfs, pika, json
 from flask import Flask, request, send_file
 from flask_pymongo import PyMongo
+from flask_cors import CORS
 from auth import validate
 from auth_svc import access
 from storage import util
@@ -15,6 +16,7 @@ print("🐇 RABBITMQ_PASSWORD:", os.environ.get("RABBITMQ_PASSWORD"))
 print("🐇 Connecting to:", os.environ.get("RABBITMQ_HOST"))
 
 server = Flask(__name__)
+CORS(server)  # ✅ Enable CORS globally
 
 # Flask-PyMongo setup
 mongo_video = PyMongo(server, uri=os.environ.get('MONGO_URI'))
@@ -51,8 +53,11 @@ def login():
     token, err = access.login(request)
     return token if not err else err
 
-@server.route("/upload", methods=["POST"])
+@server.route("/upload", methods=["POST", "OPTIONS"])  # ✅ Explicitly allow OPTIONS
 def upload():
+    if request.method == "OPTIONS":
+        return '', 204  # ✅ Respond to CORS preflight
+
     access_token, err = validate.token(request)
     if err:
         return err
@@ -63,11 +68,12 @@ def upload():
             return "exactly 1 file required", 400
 
         for _, f in request.files.items():
-            err = util.upload(f, fs_videos, channel, access_data)
+            file_id, err = util.upload(f, fs_videos, channel, access_data)
             if err:
                 return err
 
-        return "success!", 200
+            return f"success! File stored with ID: {str(file_id)}", 200
+
     return "not authorized", 401
 
 @server.route("/download", methods=["GET"])
