@@ -179,7 +179,7 @@
       }
 
       const formData = new FormData();
-      formData.append("file", fileInput.files[0]);  // ✅ Corrected field name
+      formData.append("file", fileInput.files[0]);
 
       try {
         const res = await fetch(`${gatewayURL}/upload`, {

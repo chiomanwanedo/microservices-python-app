@@ -16,6 +16,8 @@ spec:
       containers:
         - name: mongodb
           image: mongo:4.4
+          args:                      # ✅ Add this block
+            - --bind_ip_all          # ✅ Allow external connections
           ports:
             - containerPort: 27017
           env:

@@ -4,6 +4,6 @@ metadata:
   name: gateway-configmap
   namespace: videoapp
 data:
-  AUTH_SVC_ADDRESS: "auth-service.videoapp.svc.cluster.local:80"
+  AUTH_SVC_ADDRESS: "http://auth-service.videoapp.svc.cluster.local:80"
   MONGODB_VIDEOS_URI: "mongodb://mongoUser:mongoPass@mongodb:27017/videos?authSource=admin"
   MONGODB_MP3S_URI: "mongodb://mongoUser:mongoPass@mongodb:27017/mp3s?authSource=admin"

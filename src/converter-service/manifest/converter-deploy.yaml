@@ -17,8 +17,37 @@ spec:
         - name: converter-service
           image: chiomavee/converter-service:latest
           imagePullPolicy: Always
+          command: ["python"]              # ✅ Forces execution of consumer.py
+          args: ["consumer.py"]
           ports:
             - containerPort: 5000
-          envFrom:
-            - configMapRef:
-                name: converter-configmap
+          env:
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"
+            - name: RABBITMQ_PORT
+              value: "5672"
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: rabbitmq-username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: rabbitmq-password
+            - name: MONGODB_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: converter-configmap
+                  key: MONGODB_URI
+            - name: VIDEO_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: converter-configmap
+                  key: VIDEO_QUEUE
+            - name: MP3_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: converter-configmap
+                  key: MP3_QUEUE

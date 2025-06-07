@@ -8,5 +8,3 @@ data:
   VIDEO_QUEUE: "video"
   MONGODB_URI: "mongodb://mongoUser:mongoPass@mongodb:27017/mp3s?authSource=admin"
   RABBITMQ_HOST: "rabbitmq"
-  RABBITMQ_USER: "guest"
-  RABBITMQ_PASSWORD: "guestpassword"

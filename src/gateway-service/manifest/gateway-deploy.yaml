@@ -18,22 +18,6 @@ spec:
           image: chiomavee/gateway-service:latest
           ports:
             - containerPort: 5000
-          env:
-            - name: MONGO_URI
-              value: "mongodb://mongoUser:mongoPass@mongodb.videoapp.svc.cluster.local:27017/videoapp?authSource=admin"
-            - name: MONGODB_MP3S_URI
-              value: "mongodb://mongoUser:mongoPass@mongodb.videoapp.svc.cluster.local:27017/mp3s?authSource=admin"
-            - name: RABBITMQ_HOST
-              value: "rabbitmq.videoapp.svc.cluster.local"
-            - name: RABBITMQ_USER
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq
-                  key: RABBITMQ_DEFAULT_USER
-            - name: RABBITMQ_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq
-                  key: RABBITMQ_DEFAULT_PASS
-            - name: AUTH_SVC_ADDRESS
-              value: "http://auth-service.videoapp.svc.cluster.local"
+          envFrom:
+            - secretRef:
+                name: videoapp-secrets

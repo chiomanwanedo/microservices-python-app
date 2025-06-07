@@ -1,101 +1,96 @@
-import os, gridfs, pika, json
-from flask import Flask, request, send_file
+import os
+import json
+import gridfs
+import traceback
+from flask import Flask, request, send_file, jsonify
 from flask_pymongo import PyMongo
-from flask_cors import CORS
-from auth import validate
-from auth_svc import access
-from storage import util
+from flask_cors import CORS, cross_origin
 from bson.objectid import ObjectId
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from pymongo import MongoClient
-from urllib.parse import urlparse
+from auth import validate
+from storage import util  # ✅ contains the publish() function that talks to RabbitMQ
 
-# 🔍 Debug: print RabbitMQ env vars at container startup
+# Debugging environment values
+print("📦 MONGODB URI:", os.environ.get("MONGODB_MP3S_URI"))
+print("🐇 RABBITMQ_HOST:", os.environ.get("RABBITMQ_HOST"))
 print("🐇 RABBITMQ_USER:", os.environ.get("RABBITMQ_USER"))
-print("🐇 RABBITMQ_PASSWORD:", os.environ.get("RABBITMQ_PASSWORD"))
-print("🐇 Connecting to:", os.environ.get("RABBITMQ_HOST"))
 
+# Flask app initialization
 server = Flask(__name__)
-CORS(server)  # ✅ Enable CORS globally
+CORS(server)
 
-# Flask-PyMongo setup
-mongo_video = PyMongo(server, uri=os.environ.get('MONGO_URI'))
-mongo_mp3 = PyMongo(server, uri=os.environ.get('MONGODB_MP3S_URI'))
+# MongoDB connection
+server.config["MONGO_URI"] = os.environ.get("MONGODB_MP3S_URI")
+mongo = PyMongo(server)
+fs = gridfs.GridFS(mongo.db)
 
-# Helper to extract DB name from URI
-def get_db_name(uri):
-    return urlparse(uri).path[1:]  # removes leading '/'
+# Health check route
+@server.route("/", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
-# Use raw PyMongo clients for GridFS compatibility
-mongo_video_client = MongoClient(os.environ.get('MONGO_URI'))
-mongo_mp3_client = MongoClient(os.environ.get('MONGODB_MP3S_URI'))
+# ✅ Upload route that only saves video and sends message to RabbitMQ
+@server.route("/upload", methods=["POST"])
+@cross_origin()
+def upload_file():
+    access, error = validate.token(request)
+    if not access:
+        return jsonify({"error": error}), 401
 
-video_db = mongo_video_client[get_db_name(os.environ.get('MONGO_URI'))]
-mp3_db = mongo_mp3_client[get_db_name(os.environ.get('MONGODB_MP3S_URI'))]
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-# GridFS setup
-fs_videos = gridfs.GridFS(video_db)
-fs_mp3s = gridfs.GridFS(mp3_db)
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
 
-# RabbitMQ setup
-connection = pika.BlockingConnection(pika.ConnectionParameters(
-    host=os.environ.get("RABBITMQ_HOST", "rabbitmq"),
-    credentials=pika.PlainCredentials(
-        os.environ.get("RABBITMQ_USER", "guest"),
-        os.environ.get("RABBITMQ_PASSWORD", "guestpassword")
-    ),
-    heartbeat=0
-))
-channel = connection.channel()
+    try:
+        f_id = fs.put(file, filename=file.filename)
+        print("💾 File saved with ID:", str(f_id))
+    except Exception as e:
+        print("❌ GridFS put error:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": "Failed to save file"}), 500
 
-@server.route("/login", methods=["POST"])
-def login():
-    token, err = access.login(request)
-    return token if not err else err
+    try:
+        util.publish({
+            "video_fid": str(f_id),
+            "username": access["username"],
+        })
+        print("📤 Message published to RabbitMQ")
+    except Exception as e:
+        print("❌ RabbitMQ publish error:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": "Failed to publish message"}), 500
 
-@server.route("/upload", methods=["POST", "OPTIONS"])  # ✅ Explicitly allow OPTIONS
-def upload():
-    if request.method == "OPTIONS":
-        return '', 204  # ✅ Respond to CORS preflight
+    return jsonify({"video_fid": str(f_id)}), 200
 
-    access_token, err = validate.token(request)
-    if err:
-        return err
-
-    access_data = json.loads(access_token)
-    if access_data["admin"]:
-        if len(request.files) != 1:
-            return "exactly 1 file required", 400
-
-        for _, f in request.files.items():
-            file_id, err = util.upload(f, fs_videos, channel, access_data)
-            if err:
-                return err
-
-            return f"success! File stored with ID: {str(file_id)}", 200
-
-    return "not authorized", 401
-
+# File download route
 @server.route("/download", methods=["GET"])
-def download():
-    access_token, err = validate.token(request)
-    if err:
-        return err
+@cross_origin()
+def download_file():
+    fid = request.args.get("fid")
+    if not fid:
+        return jsonify({"error": "Missing file ID"}), 400
+    try:
+        out = fs.get(ObjectId(fid))
+        return send_file(out, download_name=out.filename)
+    except Exception as e:
+        print("❌ Download error:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
-    access_data = json.loads(access_token)
-    if access_data["admin"]:
-        fid_string = request.args.get("fid")
-        if not fid_string:
-            return "fid is required", 400
-
-        try:
-            out = fs_mp3s.get(ObjectId(fid_string))
-            return send_file(out, download_name=f"{fid_string}.mp3")
-        except Exception as e:
-            print(e)
-            return "internal server error", 500
-
-    return "not authorized", 401
+# Simple auth-protected route
+@server.route("/protected", methods=["GET"])
+@cross_origin()
+def protected():
+    access, error = validate.token(request)
+    if not access:
+        return jsonify({"error": error}), 401
+    return jsonify({
+        "message": "✅ Protected route accessed!",
+        "user": access["username"],
+        "admin": access["admin"]
+    })
 
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=5000)
+    server.run(host="0.0.0.0", port=5000, debug=True)
